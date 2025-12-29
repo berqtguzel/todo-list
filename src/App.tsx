@@ -13,6 +13,7 @@ import { BulkActions } from './components/BulkActions';
 import { saveTodos, subscribeToTodos } from './utils/firebaseStorage';
 import { generateId, calculateStats } from './utils/helpers';
 import AuthPanel from './components/AuthPanel';
+import SplashCursor from './components/SplashCursor';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -280,6 +281,7 @@ function App() {
   // Authenticated - show todo app
   return (
     <div className="app">
+      <SplashCursor />
       <div className="app-header">
         <div className="header-content">
           <header className="header">
