@@ -20,7 +20,6 @@ export const BulkActions = ({
   onBulkPriorityChange,
 }: BulkActionsProps) => {
   const allSelected = selectedIds.size === todos.length && todos.length > 0;
-  const someSelected = selectedIds.size > 0 && selectedIds.size < todos.length;
 
   if (selectedIds.size === 0) {
     return null;

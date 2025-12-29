@@ -1,6 +1,5 @@
 import { useState, FormEvent } from 'react';
 import { Priority, Category } from '../types';
-import { generateId } from '../utils/helpers';
 
 interface TodoFormProps {
   onSubmit: (text: string, priority: Priority, category: Category, dueDate: string | null, notes: string) => void;
