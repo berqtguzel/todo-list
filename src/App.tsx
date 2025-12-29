@@ -1,4 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { auth } from './config/firebase';
+import { logout } from './config/auth';
 import { Todo, FilterType, Priority, Category } from './types';
 import { TodoForm } from './components/TodoForm';
 import { TodoList } from './components/TodoList';
@@ -7,10 +10,13 @@ import { StatsPanel } from './components/StatsPanel';
 import { ThemeToggle } from './components/ThemeToggle';
 import { BackgroundColorPicker } from './components/BackgroundColorPicker';
 import { BulkActions } from './components/BulkActions';
-import { saveTodos, loadTodos, subscribeToTodos } from './utils/firebaseStorage';
+import { saveTodos, subscribeToTodos } from './utils/firebaseStorage';
 import { generateId, calculateStats } from './utils/helpers';
+import AuthPanel from './components/AuthPanel';
 
 function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [filter, setFilter] = useState<FilterType>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -23,25 +29,58 @@ function App() {
     return localStorage.getItem('backgroundColor') || '#f97316';
   });
 
+  // Authentication state listener
   useEffect(() => {
-    // İlk yükleme
-    loadTodos().then((loadedTodos) => {
-      setTodos(loadedTodos);
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setLoading(false);
     });
 
+    return () => unsubscribe();
+  }, []);
+
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+
+  useEffect(() => {
+    if (!user) {
+      // Kullanıcı yoksa todo listesini temizle
+      setTodos([]);
+      setIsInitialLoad(true);
+      return;
+    }
+
+    setIsInitialLoad(true);
+    let isFirstSnapshot = true;
+
     // Gerçek zamanlı senkronizasyon (farklı cihazlardan gelen güncellemeleri dinle)
-    const unsubscribe = subscribeToTodos((syncedTodos) => {
+    const unsubscribe = subscribeToTodos(user.uid, (syncedTodos, hasPendingWrites) => {
+      if (isFirstSnapshot) {
+        // İlk snapshot'ı direkt yükle
+        isFirstSnapshot = false;
+        setIsInitialLoad(false);
+        setTodos(syncedTodos);
+        return;
+      }
+
+      // Eğer pending writes varsa (local write), snapshot'ı ignore et
+      // Çünkü bu bizim yazdığımız veriyi geri döndürüyor olabilir
+      if (hasPendingWrites) {
+        return;
+      }
+
+      // Snapshot'tan gelen veriyi direkt kullan (remote değişiklikler için)
       setTodos(syncedTodos);
     });
 
     return () => {
       unsubscribe();
     };
-  }, []);
+  }, [user]);
 
   useEffect(() => {
-    // Görevler değiştiğinde Firebase'e kaydet (ilk yükleme hariç)
-    // İlk yüklemede boş array gelirse kaydetme
+    if (!user || isInitialLoad) return;
+
+    // Görevler değiştiğinde Firebase'e kaydet
     const timeoutId = setTimeout(() => {
       saveTodos(todos).catch((error) => {
         console.error('Failed to save todos:', error);
@@ -51,7 +90,7 @@ function App() {
     return () => {
       clearTimeout(timeoutId);
     };
-  }, [todos]);
+  }, [todos, user, isInitialLoad]);
 
   useEffect(() => {
     localStorage.setItem('theme', theme);
@@ -212,6 +251,33 @@ function App() {
     setTodos(prev => prev.filter(todo => !todo.completed));
   };
 
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="auth-container">
+        <div className="auth-card">
+          <div style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+            Yükleniyor...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Not authenticated - show auth panel
+  if (!user) {
+    return <AuthPanel user={user} />;
+  }
+
+  // Authenticated - show todo app
   return (
     <div className="app">
       <div className="app-header">
@@ -223,6 +289,12 @@ function App() {
             </h1>
           </header>
           <div className="header-controls">
+            <div className="user-info">
+              <span className="user-email">{user.email}</span>
+            </div>
+            <button onClick={handleLogout} className="logout-button">
+              Çıkış Yap
+            </button>
             <BackgroundColorPicker backgroundColor={backgroundColor} onColorChange={setBackgroundColor} />
             <ThemeToggle theme={theme} onThemeChange={setTheme} />
           </div>
